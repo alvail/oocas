@@ -1,37 +1,110 @@
-## Welcome to GitHub Pages
+# oocas
 
-You can use the [editor on GitHub](https://github.com/alvail/oocas/edit/gh-pages/index.md) to maintain and preview the content for your website in Markdown files.
+[![PyPI version fury.io](https://badge.fury.io/py/oocas.svg)](https://pypi.python.org/pypi/oocas/)
+[![PyPI license](https://img.shields.io/pypi/l/oocas.svg)](https://pypi.python.org/pypi/oocas/)
+[![PyPI download month](https://img.shields.io/pypi/dm/oocas.svg)](https://pypi.python.org/pypi/oocas/)
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+**oocas** is an out-of-core data processing framework built for pandas. Its main purpose is local ETL processing of large data by sequentially processing smaller files.
 
-### Markdown
+## Installation
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
-
-```markdown
-Syntax highlighted code block
-
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
+```bash
+pip install oocas
 ```
 
-For more details see [Basic writing and formatting syntax](https://docs.github.com/en/github/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax).
+```bash
+conda install -c conda-forge oocas 
+```
 
-### Jekyll Themes
+## Usage
 
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/alvail/oocas/settings/pages). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
+The data, which are specified by a list of file paths, are read, transformed, and written/returned. In a transform substep data can be cached to be available in later transform substeps. A processing pipeline is build out of callable components.
 
-### Support or Contact
++ **Process**
++ **Read**, **FileRead**, ParquetRead, ParquetMetadataRead, **MultiRead**
++ **Transform**, **CacheTransform**
++ **Cache**, IndexCache, TimeIndexCache
++ **Write**, **FileWrite**, ParquetWrite, **MultiWrite**
 
-Having trouble with Pages? Check out our [documentation](https://docs.github.com/categories/github-pages-basics/) or [contact support](https://support.github.com/contact) and we’ll help you sort it out.
+High level components (bold) support plugin callables in addition to a variety of other useful arguments. Low level components inherit their behavior by passing a predefined method this way.
+
+## Examples
+
+Examples can be found in the docs.
+
+### Read files to dataframe
+```python
+import oocas as oc
+
+paths = oc.find_paths('data/raw')
+sqp = oc.Process(oc.ParquetRead(), progress_bar=False)
+df = pd.concat(sqp(paths), axis=0)
+```
+
+###  Random sampling
+```python
+import oocas as oc
+
+sqp = oc.Process(
+    oc.ParquetMetaDataRead(),
+    lambda x: x.num_rows,
+    progress_bar=False)
+
+nrows = sum(sqp(paths))                     
+sample_idxs = np.random.choice(nrows, 10**3)
+
+def sample(df, cache):
+    adjusted_idxs = sample_idxs - cache.data
+    cache(cache.data + len(df))
+    return df.iloc[[                                      
+        idx for idx in adjusted_idxs\
+             if idx >= 0 and idx < len(df)
+    ]].copy()
+
+sqp = oc.Process(
+    oc.ParquetRead(),
+    oc.CacheTransform(sample, cache=0))
+
+sample_df = pd.concat(sqp(paths), axis=0)
+```
+
+###  Time series moving average
+```python
+import oocas as oc
+
+def moving_average(df, cache):
+    nrows = len(df)
+    df = pd.concat([cache.data, df])
+    cache(df)
+    return df.rolling(cache.lookback)\
+        .mean().iloc[-nrows:]
+    
+sqp = oc.Process(
+    oc.ParquetRead(),
+    oc.CacheTransform(
+        moving_average,
+        oc.TimeIndexCache('1H')),
+    oc.ParquetWrite(
+        path_part_replace=('raw', 'mavg'),
+        mkdirs=True))
+
+mavg_paths = sqp(paths)
+```
+
+### N-to-1 file write
+
+```python
+import oocas as oc
+
+pickle_multi_to_one_write = oc.FileWrite(
+    lambda x, path, **kwargs:\
+        x.to_pickle(path, **kwargs),
+    path_transform=lambda x: x[0],
+    path_part_replace=('raw', 'pickle'),
+    name_transform=lambda x:\
+        '_'.join(x.split('_')[1:]),
+    suffix='.pkl.gz',
+    mkdirs=True,
+    overwrite=True,
+    compression='infer')
+```
