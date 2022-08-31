@@ -2,7 +2,6 @@
 
 [![PyPI version fury.io](https://badge.fury.io/py/oocas.svg)](https://pypi.python.org/pypi/oocas/)
 [![PyPI license](https://img.shields.io/pypi/l/oocas.svg)](https://pypi.python.org/pypi/oocas/)
-[![PyPI download month](https://img.shields.io/pypi/dm/oocas.svg)](https://pypi.python.org/pypi/oocas/)
 
 **oocas** is an out-of-core data processing framework built for pandas. Its main purpose is local ETL processing of large data by sequentially processing smaller files.
 
