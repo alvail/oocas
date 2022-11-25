@@ -12,10 +12,6 @@
 pip install oocas
 ```
 
-```bash
-conda install -c conda-forge oocas 
-```
-
 ## Usage
 
 The data, which are specified by a list of file paths, are read, transformed, and written/returned. In a transform substep data can be cached to be available in later transform substeps. A processing pipeline is build out of callable components.
